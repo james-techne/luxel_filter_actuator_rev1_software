@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
+#include "../Inc/mp6602.h"
 
 /* USER CODE END Includes */
 
@@ -47,6 +49,7 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+static const uint8_t test_str[] = "Hello World!!\r\n";
 
 /* USER CODE END PV */
 
@@ -57,11 +60,20 @@ static void MX_SPI1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void actuator_home(void);
+void actuator_move_in(void);
+void actuator_move_out(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint32_t gl_pulse_cnt = 0;
+// With no microstepping, 10310 counts is 32 mm
+uint32_t gl_pulseperposition = 39951;
+uint8_t gl_filter_position;
+uint32_t gl_actuator_position;
+uint32_t gl_actuator_offset = 2577;
 
 /* USER CODE END 0 */
 
@@ -98,6 +110,70 @@ int main(void)
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Toggle the Reset to clear any faults
+  uint32_t ii;
+  HAL_GPIO_WritePin(GPIOB, MP6602_nRST_Pin, RESET);
+  for(ii = 0; ii<0xFF; ii++){}
+  HAL_GPIO_WritePin(GPIOB, MP6602_nRST_Pin, SET);
+
+  HAL_GPIO_WritePin(GPIOA, CP_nRST_Pin, SET);
+  HAL_GPIO_WritePin(GPIOB, MP6602_ENBL_Pin, SET);
+
+
+  mp6602_init();
+
+  // SPI NOTES
+    // The HAL seems to transmit and receive bytes on SPI
+    // in reverse order. If trying to transmit 0xAA 0xBB,
+    // it will grab 0xBB and put it on the bus first, then
+    // 0xAA. Similar with the receiver buffer.
+    // That's why none of the settings seemed to work.
+    //
+
+    uint8_t txData[2] = {0x00, 0x00};
+    uint8_t rxData[2] = {0x00, 0x00};
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);
+    HAL_SPI_TransmitReceive(&hspi1, txData, rxData, 2, 100);
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, SET);
+
+    txData[1] = 0x20;
+    txData[0] = 0x00;
+    rxData[0] = 0x00;
+    rxData[1] = 0x00;
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);
+    HAL_SPI_TransmitReceive(&hspi1, txData, rxData, 2, 100);
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, SET);
+
+    txData[1] = 0x40;
+    txData[0] = 0x00;
+    rxData[0] = 0x00;
+    rxData[1] = 0x00;
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);
+    HAL_SPI_TransmitReceive(&hspi1, txData, rxData, 2, 100);
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, SET);
+
+    txData[1] = 0x60;
+    txData[0] = 0x00;
+    rxData[0] = 0x00;
+    rxData[1] = 0x00;
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);
+    HAL_SPI_TransmitReceive(&hspi1, txData, rxData, 2, 100);
+    HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, SET);
+
+  	// Set motor direction
+  	HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
+
+  	  // Set duty cycle for PWM, 50%
+  	  // Half of ARR
+  	  // OG NEMA 17 motor settings
+  	  // Counter Period: 5000
+  	  // CCR3: 2500
+  	  TIM3->CCR3 = 500;
+
+  	  GPIO_PinState limit_state;
+  	  limit_state = HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin);
+
+  	  actuator_home();
 
   /* USER CODE END 2 */
 
@@ -108,6 +184,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  HAL_GPIO_TogglePin(GPIOA, POS2_LED_Pin|POS3_LED_Pin);
+	  HAL_GPIO_TogglePin(GPIOB, POS1_LED_Pin|POS4_LED_Pin);
+	  HAL_UART_Transmit(&huart2, (uint8_t *)test_str, sizeof(test_str) - 1U, HAL_MAX_DELAY);
+	  HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -198,6 +278,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -210,6 +291,15 @@ static void MX_TIM3_Init(void)
   htim3.Init.Period = 5000;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
@@ -309,17 +399,36 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : POS1_BUT_Pin MP6602_nFAULT_Pin POS2_BUT_Pin LMT_SW_Pin */
-  GPIO_InitStruct.Pin = POS1_BUT_Pin|MP6602_nFAULT_Pin|POS2_BUT_Pin|LMT_SW_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  /*Configure GPIO pins : POS1_BUT_Pin POS2_BUT_Pin LMT_SW_Pin */
+  GPIO_InitStruct.Pin = POS1_BUT_Pin|POS2_BUT_Pin|LMT_SW_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : POS3_BUT_Pin POS4_BUT_Pin */
-  GPIO_InitStruct.Pin = POS3_BUT_Pin|POS4_BUT_Pin;
+  /*Configure GPIO pin : MP6602_nFAULT_Pin */
+  GPIO_InitStruct.Pin = MP6602_nFAULT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(MP6602_nFAULT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : POS3_BUT_Pin */
+  GPIO_InitStruct.Pin = POS3_BUT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(POS3_BUT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : POS4_BUT_Pin */
+  GPIO_InitStruct.Pin = POS4_BUT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(POS4_BUT_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI2_3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -327,6 +436,117 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void actuator_home(void)
+{
+	uint32_t ii;
+	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET)
+	{
+		HAL_GPIO_WritePin(GPIOB, DIR_Pin, SET);
+		HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+		HAL_TIM_Base_Start(&htim3);
+
+	}
+
+	while(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET){};
+	for(ii = 0; ii<0xFFFF; ii++){}
+
+	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET)
+	{
+		// Move 2mm off the switch
+		// Do this a better way
+		gl_pulse_cnt = 0;
+		gl_pulseperposition = gl_actuator_offset;
+		actuator_move_in();
+		for(ii = 0; ii<0xFFFFFF; ii++){}
+		gl_pulseperposition = 39951;
+	}
+
+	gl_filter_position = 1;
+	gl_pulse_cnt = 0;
+
+
+} // actuator_home
+
+void actuator_move_in(void)
+{
+	if(gl_filter_position < 4)
+	{
+		gl_pulse_cnt = 0;
+
+		HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
+		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+		HAL_TIM_Base_Start_IT(&htim3);
+
+		gl_filter_position++;
+
+	}
+} // actuator_move_in
+
+void actuator_move_out(void)
+{
+	if(gl_filter_position > 1)
+	{
+		gl_pulse_cnt = 0;
+
+		if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET)
+		{
+			HAL_GPIO_WritePin(GPIOB, DIR_Pin, SET);
+			HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+			HAL_TIM_Base_Start_IT(&htim3);
+		}
+
+		gl_filter_position--;
+	}
+} // actuator_move_out
+
+/*
+void actuator_move_out(void)
+{
+
+	gl_pulse_cnt = 0;
+
+	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET)
+	{
+		HAL_GPIO_WritePin(GPIOB, DIR_Pin, SET);
+		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+		HAL_TIM_Base_Start_IT(&htim3);
+
+		gl_filter_position--;
+		HAL_Delay(10000);
+		HAL_TIM_PWM_Stop_IT(&htim3, TIM_CHANNEL_3);
+		HAL_TIM_Base_Stop_IT(&htim3);
+
+	}
+
+
+} // actuator_move_out
+*/
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	switch(GPIO_Pin){
+	case(POS1_BUT_Pin)	:	actuator_move_in(); break;
+	case(POS2_BUT_Pin)	: 	actuator_move_out(); break;
+	case(LMT_SW_Pin)		:	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET){HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);HAL_TIM_Base_Stop(&htim3);}; break;
+	default				: 	break;
+	}
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if(htim->Instance == TIM3)
+	{
+		if(gl_pulse_cnt == gl_pulseperposition)
+		{
+			gl_pulse_cnt = 0;
+			HAL_TIM_PWM_Stop_IT(&htim3, TIM_CHANNEL_3);
+			HAL_TIM_Base_Stop_IT(&htim3);
+		}
+		else
+		{
+			gl_pulse_cnt++;
+		}
+	}
+}
 
 /* USER CODE END 4 */
 

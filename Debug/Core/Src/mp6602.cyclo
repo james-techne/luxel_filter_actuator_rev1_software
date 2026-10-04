@@ -1,0 +1,3 @@
+../Core/Src/mp6602.c:29:6:mp6602_init	1
+../Core/Src/mp6602.c:96:6:mp6602_reset	2
+../Core/Src/mp6602.c:111:6:mp6602_enable	1

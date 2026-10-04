@@ -67,6 +67,7 @@ void Error_Handler(void);
 #define DIR_GPIO_Port GPIOB
 #define POS1_BUT_Pin GPIO_PIN_2
 #define POS1_BUT_GPIO_Port GPIOB
+#define POS1_BUT_EXTI_IRQn EXTI2_3_IRQn
 #define MP6602_ENBL_Pin GPIO_PIN_10
 #define MP6602_ENBL_GPIO_Port GPIOB
 #define MP6602_nFAULT_Pin GPIO_PIN_11
@@ -79,10 +80,12 @@ void Error_Handler(void);
 #define POS1_LED_GPIO_Port GPIOB
 #define POS2_BUT_Pin GPIO_PIN_15
 #define POS2_BUT_GPIO_Port GPIOB
+#define POS2_BUT_EXTI_IRQn EXTI4_15_IRQn
 #define POS2_LED_Pin GPIO_PIN_8
 #define POS2_LED_GPIO_Port GPIOA
 #define POS3_BUT_Pin GPIO_PIN_9
 #define POS3_BUT_GPIO_Port GPIOA
+#define POS3_BUT_EXTI_IRQn EXTI4_15_IRQn
 #define POS3_LED_Pin GPIO_PIN_10
 #define POS3_LED_GPIO_Port GPIOA
 #define POS4_BUT_Pin GPIO_PIN_15
@@ -91,6 +94,7 @@ void Error_Handler(void);
 #define POS4_LED_GPIO_Port GPIOB
 #define LMT_SW_Pin GPIO_PIN_4
 #define LMT_SW_GPIO_Port GPIOB
+#define LMT_SW_EXTI_IRQn EXTI4_15_IRQn
 
 /* USER CODE BEGIN Private defines */
 
