@@ -23,6 +23,9 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include "../Inc/mp6602.h"
+#include "../Inc/circbuff.h"
+#include <stdbool.h>
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -60,20 +63,33 @@ static void MX_SPI1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void calc_pos_counts(void);
 void actuator_home(void);
 void actuator_move_in(void);
 void actuator_move_out(void);
-
+void actuator_move_pos(uint8_t pos);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint32_t gl_pulse_cnt = 0;
 // With no microstepping, 10310 counts is 32 mm
-uint32_t gl_pulseperposition = 39951;
+//uint32_t gl_pulseperposition = 39951;
+uint32_t gl_pulseperposition = 79902;
 uint8_t gl_filter_position;
 uint32_t gl_actuator_position;
-uint32_t gl_actuator_offset = 2577;
+uint32_t gl_actuator_offset = 5154;
+uint32_t gl_positiondelta = 0;
+uint32_t gl_pos_counts[4];
+bool gl_inmotion = false;
+bool gl_homed = false;
+bool gl_limit = false;
+
+CB_t *UART_Rx = NULL;
+CB_t *UART_Tx = NULL;
+#define USB_BUFF_SIZE	128
+
+uint8_t rxByte;
 
 /* USER CODE END 0 */
 
@@ -116,11 +132,16 @@ int main(void)
   for(ii = 0; ii<0xFF; ii++){}
   HAL_GPIO_WritePin(GPIOB, MP6602_nRST_Pin, SET);
 
+  //Enable the USB/UART Bridge and the Motor Driver
   HAL_GPIO_WritePin(GPIOA, CP_nRST_Pin, SET);
   HAL_GPIO_WritePin(GPIOB, MP6602_ENBL_Pin, SET);
+  //HAL_GPIO_WritePin(GPIOB, MP6602_ENBL_Pin, RESET);
 
 
   mp6602_init();
+
+  CB_init(&UART_Rx, USB_BUFF_SIZE);
+  CB_init(&UART_Tx, USB_BUFF_SIZE);
 
   // SPI NOTES
     // The HAL seems to transmit and receive bytes on SPI
@@ -129,7 +150,7 @@ int main(void)
     // 0xAA. Similar with the receiver buffer.
     // That's why none of the settings seemed to work.
     //
-
+/*
     uint8_t txData[2] = {0x00, 0x00};
     uint8_t rxData[2] = {0x00, 0x00};
     HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);
@@ -159,6 +180,7 @@ int main(void)
     HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);
     HAL_SPI_TransmitReceive(&hspi1, txData, rxData, 2, 100);
     HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, SET);
+*/
 
   	// Set motor direction
   	HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
@@ -168,12 +190,33 @@ int main(void)
   	  // OG NEMA 17 motor settings
   	  // Counter Period: 5000
   	  // CCR3: 2500
-  	  TIM3->CCR3 = 500;
+  	  TIM3->CCR3 = 1200;
+  	  calc_pos_counts();
 
   	  GPIO_PinState limit_state;
+  	  GPIO_PinState POS4_State;
   	  limit_state = HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin);
 
-  	  actuator_home();
+  	  //actuator_home();
+  	  HAL_StatusTypeDef status;
+
+  	  // Reset CP2102 chip
+  	//HAL_GPIO_WritePin(GPIOA, CP_nRST_Pin, RESET);
+  	//HAL_Delay(1000);
+  	//HAL_GPIO_WritePin(GPIOA, CP_nRST_Pin, SET);
+  	//status = HAL_UART_Receive(&huart2, &rxByte, 1, 5000);
+
+  	//HAL_UART_Transmit_IT(&huart2, test_str, sizeof(test_str)-1);
+
+  	  limit_state = HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin);
+  	  if(limit_state == GPIO_PIN_RESET)
+  	  {
+  		  gl_limit = true;
+  	  }
+  	  else
+  	  {
+  		  gl_limit = false;
+  	  }
 
   /* USER CODE END 2 */
 
@@ -184,10 +227,16 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_GPIO_TogglePin(GPIOA, POS2_LED_Pin|POS3_LED_Pin);
-	  HAL_GPIO_TogglePin(GPIOB, POS1_LED_Pin|POS4_LED_Pin);
-	  HAL_UART_Transmit(&huart2, (uint8_t *)test_str, sizeof(test_str) - 1U, HAL_MAX_DELAY);
-	  HAL_Delay(1000);
+	  POS4_State = HAL_GPIO_ReadPin(GPIOA, POS4_BUT_Pin);
+	  if(POS4_State == GPIO_PIN_RESET)
+	  {
+		  actuator_move_pos(4);
+	  }
+	  //HAL_GPIO_TogglePin(GPIOA, POS2_LED_Pin|POS3_LED_Pin);
+	  //HAL_GPIO_TogglePin(GPIOB, POS1_LED_Pin|POS4_LED_Pin);
+	  //HAL_UART_Transmit(&huart2, (uint8_t *)test_str, sizeof(test_str) - 1U, HAL_MAX_DELAY);
+	  //HAL_UART_Transmit_IT(&huart2, test_str, sizeof(test_str)-1);
+	  //HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -288,7 +337,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 5000;
+  htim3.Init.Period = 2400;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -319,6 +368,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM3_Init 2 */
+  //HAL_NVIC_SetPriority(TIM3_IRQn,     3, 0);  /* Motor PWM: lower priority */
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
@@ -341,7 +391,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -399,8 +449,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : POS1_BUT_Pin POS2_BUT_Pin LMT_SW_Pin */
-  GPIO_InitStruct.Pin = POS1_BUT_Pin|POS2_BUT_Pin|LMT_SW_Pin;
+  /*Configure GPIO pins : POS1_BUT_Pin POS2_BUT_Pin */
+  GPIO_InitStruct.Pin = POS1_BUT_Pin|POS2_BUT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -423,6 +473,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(POS4_BUT_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : LMT_SW_Pin */
+  GPIO_InitStruct.Pin = LMT_SW_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(LMT_SW_GPIO_Port, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
@@ -436,33 +492,76 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void calc_pos_counts(void)
+{
+	gl_pos_counts[0] = gl_actuator_offset;
+	gl_pos_counts[1] = gl_pos_counts[0] + gl_pulseperposition;
+	gl_pos_counts[2] = gl_pos_counts[1] + gl_pulseperposition;
+	gl_pos_counts[3] = gl_pos_counts[2] + gl_pulseperposition;
+
+} //calc_pos_counts
+
 void actuator_home(void)
 {
 	uint32_t ii;
+	// If Limit switch is already depressed, move off limit
+//	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET)
+//	{
+//		gl_positiondelta = 8000;
+//		gl_pulse_cnt = 0;
+//		gl_inmotion = true;
+//		HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
+//		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+//		HAL_TIM_Base_Start_IT(&htim3);
+//		while(gl_inmotion){};
+//		for(ii=0; ii<0x7FFFFF; ii++){}
+//		HAL_TIM_PWM_Stop_IT(&htim3, TIM_CHANNEL_3);
+//		HAL_TIM_Base_Stop_IT(&htim3);
+//
+//	}
+
+	// IF limit switch is not depressed, move to limit
 	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET)
 	{
 		HAL_GPIO_WritePin(GPIOB, DIR_Pin, SET);
+		gl_inmotion = true;
 		HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
 		HAL_TIM_Base_Start(&htim3);
 
+		while(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET){};
+		//__HAL_GPIO_EXTI_CLEAR_IT(LMT_SW_Pin);
+		HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+		HAL_TIM_Base_Stop(&htim3);
+		gl_inmotion = false;
 	}
 
-	while(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_SET){};
-	for(ii = 0; ii<0xFFFF; ii++){}
+	for(ii=0; ii<0x7FFFFF; ii++){}
+	__HAL_GPIO_EXTI_CLEAR_IT(LMT_SW_Pin);
 
-	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET)
-	{
-		// Move 2mm off the switch
-		// Do this a better way
-		gl_pulse_cnt = 0;
-		gl_pulseperposition = gl_actuator_offset;
-		actuator_move_in();
-		for(ii = 0; ii<0xFFFFFF; ii++){}
-		gl_pulseperposition = 39951;
-	}
+	gl_positiondelta = gl_actuator_offset;
+	gl_pulse_cnt = 0;
+	HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
+	gl_inmotion = true;
+	HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+	HAL_TIM_Base_Start_IT(&htim3);
+
+	gl_homed = true;
+
+
+
+//	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET)
+//	{
+//		gl_positiondelta = gl_actuator_offset;
+//		HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
+//		gl_inmotion = true;
+//		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+//		HAL_TIM_Base_Start_IT(&htim3);
+//	}
 
 	gl_filter_position = 1;
 	gl_pulse_cnt = 0;
+	gl_actuator_position = gl_actuator_offset;
+	set_led_pos(gl_filter_position);
 
 
 } // actuator_home
@@ -478,6 +577,8 @@ void actuator_move_in(void)
 		HAL_TIM_Base_Start_IT(&htim3);
 
 		gl_filter_position++;
+
+		set_led_pos(gl_filter_position);
 
 	}
 } // actuator_move_in
@@ -496,8 +597,40 @@ void actuator_move_out(void)
 		}
 
 		gl_filter_position--;
+
+		set_led_pos(gl_filter_position);
 	}
 } // actuator_move_out
+
+void actuator_move_pos(uint8_t pos)
+{
+	if(gl_filter_position != pos)
+	{
+		//Determine direction
+		if(pos > gl_filter_position)
+		{
+			HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
+			//Determine pulse count
+			gl_positiondelta = gl_pos_counts[pos-1] - gl_pos_counts[gl_filter_position -1];
+		}
+		else
+		{
+			HAL_GPIO_WritePin(GPIOB, DIR_Pin, SET);
+			//Determine pulse count
+			gl_positiondelta = gl_pos_counts[gl_filter_position -1] - gl_pos_counts[pos-1];
+		}
+
+		gl_inmotion = true;
+		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
+		HAL_TIM_Base_Start_IT(&htim3);
+
+		gl_filter_position = pos;
+		set_led_pos(gl_filter_position);
+
+
+
+	}
+} //actuator_move_pos
 
 /*
 void actuator_move_out(void)
@@ -524,9 +657,10 @@ void actuator_move_out(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	switch(GPIO_Pin){
-	case(POS1_BUT_Pin)	:	actuator_move_in(); break;
-	case(POS2_BUT_Pin)	: 	actuator_move_out(); break;
-	case(LMT_SW_Pin)		:	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET){HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);HAL_TIM_Base_Stop(&htim3);}; break;
+	case(POS1_BUT_Pin)	:	if(gl_homed){actuator_move_pos(1);}else{actuator_home();} break;
+	case(POS2_BUT_Pin)	: 	actuator_move_pos(2); break;
+	case(POS3_BUT_Pin)	:	actuator_move_pos(3); break;
+	case(LMT_SW_Pin)	:	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET){gl_limit = true; HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);HAL_TIM_Base_Stop(&htim3);}else{gl_limit = false;} break;
 	default				: 	break;
 	}
 }
@@ -535,11 +669,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim->Instance == TIM3)
 	{
-		if(gl_pulse_cnt == gl_pulseperposition)
+		if(gl_pulse_cnt == gl_positiondelta)
 		{
 			gl_pulse_cnt = 0;
 			HAL_TIM_PWM_Stop_IT(&htim3, TIM_CHANNEL_3);
 			HAL_TIM_Base_Stop_IT(&htim3);
+			gl_inmotion = false;
 		}
 		else
 		{
@@ -547,6 +682,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		}
 	}
 }
+
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+//{
+//    if (huart->Instance == USART2)
+//    {
+//        /* rxByte now contains one received byte. */
+//
+//        /* Example: echo that byte back asynchronously. */
+//        HAL_UART_Transmit_IT(&huart2, &rxByte, 1);
+//
+//        /* Rearm receive, otherwise it stops after this one byte. */
+//        HAL_UART_Receive_IT(&huart2, &rxByte, 1);
+//    }
+//}
 
 /* USER CODE END 4 */
 

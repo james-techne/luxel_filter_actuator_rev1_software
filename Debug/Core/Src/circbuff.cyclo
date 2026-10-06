@@ -1,0 +1,8 @@
+../Core/Src/circbuff.c:14:14:CB_buffer_add_item	4
+../Core/Src/circbuff.c:40:14:CB_buffer_remove_item	5
+../Core/Src/circbuff.c:66:14:CB_is_full	3
+../Core/Src/circbuff.c:79:14:CB_is_empty	3
+../Core/Src/circbuff.c:92:10:CB_peek	2
+../Core/Src/circbuff.c:106:14:CB_init	3
+../Core/Src/circbuff.c:132:14:CB_destroy	2
+../Core/Src/circbuff.c:145:14:CB_purge	1

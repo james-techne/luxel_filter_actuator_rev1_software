@@ -1,3 +1,5 @@
+"./Core/Src/circbuff.o"
+"./Core/Src/led.o"
 "./Core/Src/main.o"
 "./Core/Src/mp6602.o"
 "./Core/Src/stm32f0xx_hal_msp.o"
