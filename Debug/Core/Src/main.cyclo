@@ -1,4 +1,4 @@
-../Core/Src/main.c:104:5:main	7
+../Core/Src/main.c:104:5:main	8
 ../Core/Src/main.c:267:6:SystemClock_Config	3
 ../Core/Src/main.c:302:13:MX_SPI1_Init	2
 ../Core/Src/main.c:342:13:MX_TIM3_Init	6
@@ -7,7 +7,7 @@
 ../Core/Src/main.c:514:6:calc_pos_counts	1
 ../Core/Src/main.c:525:6:actuator_move_in	2
 ../Core/Src/main.c:542:6:actuator_move_out	3
-../Core/Src/main.c:585:6:HAL_GPIO_EXTI_Callback	9
+../Core/Src/main.c:585:6:HAL_GPIO_EXTI_Callback	11
 ../Core/Src/main.c:596:6:HAL_TIM_PeriodElapsedCallback	3
 ../Core/Src/main.c:614:6:HAL_UART_RxCpltCallback	3
 ../Core/Src/main.c:639:6:Error_Handler	1

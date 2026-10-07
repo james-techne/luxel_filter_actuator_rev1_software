@@ -74,7 +74,7 @@ void actuator_home(void)
 
 void actuator_move_pos(uint8_t pos)
 {
-	if(gl_filter_position != pos)
+	if((gl_filter_position != pos) && (!gl_inmotion))
 	{
 		//Determine direction
 		if(pos > gl_filter_position)

@@ -1,4 +1,2 @@
-../Core/Src/cmd.c:10:6:cmd_home	4
-../Core/Src/cmd.c:45:6:cmd_home_q	1
-../Core/Src/cmd.c:49:6:cmd_pos	8
-../Core/Src/cmd.c:89:6:cmd_pos_q	1
+../Core/Src/cmd.c:10:6:cmd_home	8
+../Core/Src/cmd.c:77:6:cmd_pos	11

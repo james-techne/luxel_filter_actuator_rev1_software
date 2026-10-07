@@ -28,9 +28,9 @@ extern UART_HandleTypeDef huart2;
 
 
 void cmd_home(void);
-void cmd_home_q(void);
+
 void cmd_pos(void);
-void cmd_pos_q(void);
+
 
 
 #endif /* INC_CMD_H_ */

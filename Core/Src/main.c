@@ -238,7 +238,7 @@ int main(void)
 	  POS4_State = HAL_GPIO_ReadPin(GPIOA, POS4_BUT_Pin);
 	  if(POS4_State == GPIO_PIN_RESET)
 	  {
-		  actuator_move_pos(4);
+		  if(gl_homed){actuator_move_pos(4);}else{actuator_home();}
 	  }
 
 	  if(gl_cmd_flag)
@@ -586,8 +586,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	switch(GPIO_Pin){
 	case(POS1_BUT_Pin)	:	if(gl_homed){actuator_move_pos(1);}else{actuator_home();} break;
-	case(POS2_BUT_Pin)	: 	actuator_move_pos(2); break;
-	case(POS3_BUT_Pin)	:	actuator_move_pos(3); break;
+	case(POS2_BUT_Pin)	: 	if(gl_homed){actuator_move_pos(2);}else{actuator_home();} break;
+	case(POS3_BUT_Pin)	:	if(gl_homed){actuator_move_pos(3);}else{actuator_home();} break;
 	case(LMT_SW_Pin)	:	if(HAL_GPIO_ReadPin(GPIOB, LMT_SW_Pin) == GPIO_PIN_RESET){gl_limit = true; HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);HAL_TIM_Base_Stop(&htim3);}else{gl_limit = false;} break;
 	default				: 	break;
 	}
