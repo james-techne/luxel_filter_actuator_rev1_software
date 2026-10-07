@@ -13,6 +13,7 @@
 #include "circbuff.h"
 extern CB_t *UART_Rx;
 extern CB_t *UART_Tx;
+extern UART_HandleTypeDef huart2;
 
 
 #define CMD_TERM		0x0D		//ENTER, carriage return
