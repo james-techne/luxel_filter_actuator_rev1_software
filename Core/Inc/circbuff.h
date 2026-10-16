@@ -1,7 +1,10 @@
 /**
- * @file circbuf.h
- * @brief Function prototypes for circbuf.c
- * Contains function protoypes for circular buffer routines
+ * @file circbuff.h
+ * @brief Byte circular (ring) buffer.
+ *
+ * Types and function prototypes for the routines in circbuff.c. Used for
+ * the USART2 receive and transmit buffers.
+ *
  * @author James Phillips
  * @date 6/28/2017
  */
@@ -11,88 +14,106 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * @brief Circular buffer control structure.
+ *
+ * Allocated on the heap by CB_init() and released by CB_destroy().
+ * @note @c head and @c tail are 8-bit indices, so @c size must not exceed 256.
+ */
 typedef struct{
-     uint8_t *buff;
-     uint8_t head;
-     uint8_t tail;
-     uint16_t size;
-     uint16_t count;
+     uint8_t *buff;	///< Heap-allocated storage array.
+     uint8_t head;	///< Index of the next slot to write.
+     uint8_t tail;	///< Index of the next slot to read.
+     uint16_t size;	///< Capacity in bytes.
+     uint16_t count;	///< Number of bytes currently stored.
 } CB_t;
 
  //typedef struct CB_t CB_t;
 
+/**
+ * @brief Status codes returned by the circular buffer routines.
+ */
 typedef enum{
-     Success,
-     BuffFull,
-     BuffEmpty,
-     NullError
+     Success,	///< Operation succeeded; buffer is neither full nor empty (status queries).
+     BuffFull,	///< Buffer is full.
+     BuffEmpty,	///< Buffer is empty.
+     NullError	///< NULL pointer passed, or heap allocation failed.
 } CB_status_e;
 
- /**@brief Adds data to circular buffer
-  *Given a pointer to buffer and data to add, adds data to buffere and returns
-  *Success or Failure as an enum
-  * @param
-  * Inputs: Pointer to circular buffer, data to be added to the circular buffer
-  * @return - Enum specifying success/failure
-  */
+/**
+ * @brief Add one byte at the head of a circular buffer.
+ * @param buf_struct Pointer to the buffer.
+ * @param data       Byte to store.
+ * @retval Success   Byte added.
+ * @retval BuffFull  Buffer is full; the byte was discarded.
+ * @retval NullError @p buf_struct is NULL.
+ */
 CB_status_e CB_buffer_add_item(CB_t *buf_struct, uint8_t data);
 
-  /**@brief Removes data from circular buffer
-   *Given a pointer to buffer and data to add, adds data to buffere and returns
-   *Success or Failure as an enum
-   * @param
-   * Inputs: Pointer to circular buffer from which to remove data item,
-   * Variable to store and return the removed item from buffer
-   * @return - Enum specifying success/failure
-   */
+/**
+ * @brief Remove the oldest byte from a circular buffer.
+ * @param[in]  buf_struct Pointer to the buffer.
+ * @param[out] data       Receives the removed byte.
+ * @retval Success   A byte was removed and written to @p data.
+ * @retval BuffEmpty Buffer is empty; @p data is unchanged.
+ * @retval NullError @p buf_struct or @p data is NULL.
+ */
 CB_status_e CB_buffer_remove_item(CB_t *buf_struct, uint8_t *data);
 
-/**@brief Checks if buffer is full
- *Checks if the buffer passed is full and returns status or error codes
- * @param
- * Inputs: Circular buffer to check
- * @return - Status of circular buffer or error codes
+/**
+ * @brief Check whether a circular buffer is full.
+ * @param buf_struct Pointer to the buffer.
+ * @retval BuffFull  Buffer is full.
+ * @retval Success   Buffer has free space.
+ * @retval NullError @p buf_struct is NULL.
  */
 CB_status_e CB_is_full(CB_t *buf_struct);
 
-/**@brief Checks if buffer is empty
- *Checks if the buffer passed is empty and returns status or error codes
- * @param
- * Inputs: Circular buffer to check
- * @return - Status of circular buffer or error codes
+/**
+ * @brief Check whether a circular buffer is empty.
+ * @param buf_struct Pointer to the buffer.
+ * @retval BuffEmpty Buffer is empty.
+ * @retval Success   Buffer holds at least one byte.
+ * @retval NullError @p buf_struct is NULL.
  */
 CB_status_e CB_is_empty(CB_t *buf_struct);
 
-/**@brief Peeks into buffer
- *Peaks at head of circular buffer
- * @param
- * Inputs: Pointer to the circular buffer to peak into, and the position relative
- * to the head of the buffer
- * @return - Status of circular buffer or error codes
+/**
+ * @brief Read a byte without removing it.
+ *
+ * Returns the byte @p Pos places after the tail (the oldest byte). The
+ * buffer contents and indices are left unchanged.
+ * @param buf_struct Pointer to the buffer.
+ * @param Pos        Offset from the tail; 0 returns the oldest byte.
+ * @return The byte at the requested offset, or 0 if @p buf_struct is NULL.
+ * @warning The offset does not wrap at the end of the storage array and is
+ *          not checked against the number of stored bytes.
  */
 uint8_t CB_peek(CB_t *buf_struct, uint8_t Pos);
 
-/**@brief Checks if buffer is full
- *Checks if the buffer passed is full and returns status or error codes
- * @param
- * Inputs: Pointer to the circluar buffer to check and the length to be reserved
- * in buffer
- * @return - Status of circular buffer or error codes
+/**
+ * @brief Allocate and initialize a circular buffer on the heap.
+ * @param[out] buf_struct Address of the caller's ::CB_t pointer; set to the new buffer.
+ * @param      length     Capacity in bytes (at most 256, see ::CB_t).
+ * @retval Success   Buffer created.
+ * @retval NullError Allocation of the structure or its storage failed.
  */
 CB_status_e CB_init(CB_t **buf_struct, uint16_t length);
-/**@brief Checks if buffer is full
- *Checks if the buffer passed is full and returns status or error codes
- * @param
- * Inputs: Buffer to be destroyed
- * @return - Status of circular buffer or error codes
+
+/**
+ * @brief Free a circular buffer and its storage.
+ * @param buf_struct Buffer created by CB_init(); must not be used afterwards.
+ * @retval Success   Buffer freed.
+ * @retval NullError @p buf_struct is NULL.
  */
 CB_status_e CB_destroy(CB_t *buf_struct);
 
-/**@brief Checks if buffer is full
- *Checks if the buffer passed is full and returns status or error codes
- * @param
- * Inputs: Buffer to be destroyed
- * @return - Status of circular buffer or error codes
+/**
+ * @brief Discard all data in a circular buffer.
+ *
+ * Moves the tail to the head and clears the count. Storage is not freed.
+ * @param buf_struct Pointer to the buffer (not checked for NULL).
+ * @retval Success Always.
  */
  CB_status_e CB_purge(CB_t *buf_struct);
 

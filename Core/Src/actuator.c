@@ -1,8 +1,11 @@
-/*
- * actuator.c
+/**
+ * @file actuator.c
+ * @brief Filter actuator homing and position moves.
  *
- *  Created on: Oct 6, 2026
- *      Author: james
+ * Implementation of the interface in actuator.h.
+ *
+ * @author james
+ * @date Oct 6, 2026
  */
 
 #include "../Inc/actuator.h"

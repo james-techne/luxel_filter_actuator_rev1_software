@@ -15,6 +15,30 @@
   *
   ******************************************************************************
   */
+/**
+ * @file main.c
+ * @brief Application entry point, shared actuator state and HAL callbacks.
+ */
+/**
+ * @mainpage Luxel Filter Actuator Firmware
+ *
+ * Firmware for the STM32F0-based four-position filter actuator. A stepper
+ * motor driven by an MP6602 moves the filter carriage between four positions
+ * referenced to a limit switch.
+ *
+ * @section mp_modules Modules
+ * - actuator.h: homing and position moves (STEP pulses from TIM3 CH3)
+ * - mp6602.h: SPI configuration of the MP6602 stepper driver
+ * - cmd.h: USART2 command protocol for the host computer
+ * - led.h: one indicator LED per filter position
+ * - circbuff.h: byte circular buffers used by the UART
+ *
+ * @section mp_buttons Front-panel buttons
+ * Each of the four buttons selects its filter position. POS1 to POS3 are
+ * interrupt driven (HAL_GPIO_EXTI_Callback()); POS4 is polled in the main
+ * loop. Pressing a button before the actuator has been homed starts the
+ * homing sequence instead.
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -52,7 +76,7 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-static const uint8_t test_str[] = "Hello World!!\r\n";
+static const uint8_t test_str[] = "Hello World!!\r\n";	///< UART bring-up test string (currently unused).
 
 /* USER CODE END PV */
 
@@ -72,28 +96,28 @@ void actuator_move_out(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint32_t gl_pulse_cnt = 0;
+uint32_t gl_pulse_cnt = 0;	///< STEP pulses generated so far in the current move; counted in HAL_TIM_PeriodElapsedCallback().
 // With no microstepping, 10310 counts is 32 mm
 //uint32_t gl_pulseperposition = 39951;
-uint32_t gl_pulseperposition = 79902;
-uint8_t gl_filter_position;
-uint32_t gl_actuator_position;
-uint32_t gl_actuator_offset = 5154;
-uint32_t gl_positiondelta = 0;
-uint32_t gl_pos_counts[4];
-bool gl_inmotion = false;
-bool gl_homed = false;
-bool gl_limit = false;
-bool gl_cmd_flag = false;
-uint8_t gl_cmd_hopper[16];
+uint32_t gl_pulseperposition = 79902;	///< STEP pulses between adjacent filter positions.
+uint8_t gl_filter_position;	///< Current filter position, 1 to 4 (set to the target when a move starts).
+uint32_t gl_actuator_position;	///< Actuator position in pulses from the limit switch (set by homing).
+uint32_t gl_actuator_offset = 5154;	///< STEP pulses from the limit switch to filter position 1.
+uint32_t gl_positiondelta = 0;	///< Pulse count for the move in progress.
+uint32_t gl_pos_counts[4];	///< Pulse count of each filter position from the limit switch; filled by calc_pos_counts().
+bool gl_inmotion = false;	///< True while a move is in progress.
+bool gl_homed = false;	///< True once actuator_home() has run.
+bool gl_limit = false;	///< True while the limit switch is pressed.
+bool gl_cmd_flag = false;	///< Set when a command terminator is received; cleared once the main loop handles the command.
+uint8_t gl_cmd_hopper[16];	///< Command staging buffer (currently unused).
 
 
-CB_t *UART_Rx = NULL;
-CB_t *UART_Tx = NULL;
-CB_t *CMD_Buff = NULL;
-#define USB_BUFF_SIZE	128
+CB_t *UART_Rx = NULL;	///< USART2 receive buffer; filled by HAL_UART_RxCpltCallback().
+CB_t *UART_Tx = NULL;	///< USART2 transmit buffer (purged by the C command; replies are sent directly).
+CB_t *CMD_Buff = NULL;	///< Command buffer (allocated but currently unused).
+#define USB_BUFF_SIZE	128	///< Size in bytes of each UART circular buffer.
 
-uint8_t rxByte;
+uint8_t rxByte;	///< Landing byte for interrupt-driven USART2 reception.
 
 /* USER CODE END 0 */
 
@@ -513,6 +537,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * @brief Compute the pulse count of each filter position.
+ *
+ * Fills ::gl_pos_counts starting from ::gl_actuator_offset (position 1) in
+ * steps of ::gl_pulseperposition.
+ */
 void calc_pos_counts(void)
 {
 	gl_pos_counts[0] = gl_actuator_offset;
@@ -524,6 +554,11 @@ void calc_pos_counts(void)
 
 
 
+/**
+ * @brief Move one filter position away from the limit switch (toward position 4).
+ * @note Legacy helper, not currently called. It does not set
+ *       ::gl_positiondelta or ::gl_inmotion; use actuator_move_pos().
+ */
 void actuator_move_in(void)
 {
 	if(gl_filter_position < 4)
@@ -541,6 +576,13 @@ void actuator_move_in(void)
 	}
 } // actuator_move_in
 
+/**
+ * @brief Move one filter position toward the limit switch (toward position 1).
+ *
+ * Does nothing if the limit switch is already pressed.
+ * @note Legacy helper, not currently called. It does not set
+ *       ::gl_positiondelta or ::gl_inmotion; use actuator_move_pos().
+ */
 void actuator_move_out(void)
 {
 	if(gl_filter_position > 1)
@@ -584,6 +626,18 @@ void actuator_move_out(void)
 
 } // actuator_move_out
 */
+/**
+ * @brief EXTI callback for the position buttons and the limit switch.
+ *
+ * - POS1 to POS3 buttons: move to that position, or start homing if the
+ *   actuator has not been homed.
+ * - Limit switch: when pressed (low), set ::gl_limit and stop the step
+ *   timer; when released, clear ::gl_limit.
+ *
+ * @param GPIO_Pin Pin that triggered the interrupt.
+ * @note Overrides the weak HAL implementation. Because actuator_home()
+ *       busy-waits, a press before homing runs homing in interrupt context.
+ */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	switch(GPIO_Pin){
@@ -595,6 +649,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 }
 
+/**
+ * @brief TIM3 update callback: counts STEP pulses and ends a move.
+ *
+ * Called once per PWM period (one STEP pulse). When ::gl_pulse_cnt reaches
+ * ::gl_positiondelta, PWM and the timer interrupt are stopped and
+ * ::gl_inmotion is cleared.
+ * @param htim Timer that generated the update event.
+ */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim->Instance == TIM3)
@@ -613,6 +675,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
+/**
+ * @brief USART2 receive-complete callback.
+ *
+ * Echoes the received byte, re-arms single-byte reception, stores the byte
+ * in ::UART_Rx and sets ::gl_cmd_flag when ::CMD_TERM arrives.
+ * @param huart UART that completed reception.
+ */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART2)

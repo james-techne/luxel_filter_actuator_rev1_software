@@ -1,8 +1,11 @@
-/*
- * led.c
+/**
+ * @file led.c
+ * @brief Filter position indicator LEDs.
  *
- *  Created on: Oct 4, 2026
- *      Author: james
+ * Implementation of the interface in led.h.
+ *
+ * @author james
+ * @date Oct 4, 2026
  */
 
 #include "../Inc/led.h"

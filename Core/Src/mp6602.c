@@ -1,12 +1,21 @@
-/*
- * mp6602.c
+/**
+ * @file mp6602.c
+ * @brief MPS MP6602 stepper motor driver routines.
  *
- *  Created on: Aug 19, 2026
- *      Author: james
+ * Implementation of the interface in mp6602.h.
+ *
+ * @author james
+ * @date Aug 19, 2026
  */
 
 #include "../Inc/mp6602.h"
 // Original value for 1st register is 0x1118	//Reset Vals
+/**
+ * @brief MP6602 register reset values.
+ *
+ * Eight 16-bit frames, one per register from CTRL to FAULT, stored as
+ * {high byte, low byte} pairs. Used by mp6602_reset().
+ */
 uint8_t mp6602_reset_vals[16] = {0x11, 0x26,
 	   	 0x30, 0x34,
 	     0x52, 0x49,

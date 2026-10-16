@@ -1,7 +1,9 @@
 /**
- * @file circbuf.c
- * @brief Circular buffer routines
- * Contains routines to manipulate and status circular buffer
+ * @file circbuff.c
+ * @brief Circular buffer routines.
+ *
+ * Implementation of the byte circular buffer declared in circbuff.h.
+ *
  * @author James Phillips
  * @date 6/28/2017
  */

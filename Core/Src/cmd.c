@@ -1,8 +1,11 @@
-/*
- * cmd.c
+/**
+ * @file cmd.c
+ * @brief Serial command handlers.
  *
- *  Created on: Oct 6, 2026
- *      Author: james
+ * Implementation of the command protocol described in cmd.h.
+ *
+ * @author james
+ * @date Oct 6, 2026
  */
 
 #include "../Inc/cmd.h"
