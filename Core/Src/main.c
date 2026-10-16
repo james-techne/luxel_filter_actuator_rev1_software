@@ -110,6 +110,8 @@ bool gl_homed = false;	///< True once actuator_home() has run.
 bool gl_limit = false;	///< True while the limit switch is pressed.
 bool gl_cmd_flag = false;	///< Set when a command terminator is received; cleared once the main loop handles the command.
 uint8_t gl_cmd_hopper[16];	///< Command staging buffer (currently unused).
+uint32_t gl_software_limit = 244860;	///< Furthest extent of travel
+
 
 
 CB_t *UART_Rx = NULL;	///< USART2 receive buffer; filled by HAL_UART_RxCpltCallback().

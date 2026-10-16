@@ -75,7 +75,7 @@ void actuator_home(void)
 
 } // actuator_home
 
-void actuator_move_pos(uint8_t pos)
+uint8_t actuator_move_pos(uint8_t pos)
 {
 	if((gl_filter_position != pos) && (!gl_inmotion))
 	{
@@ -85,13 +85,32 @@ void actuator_move_pos(uint8_t pos)
 			HAL_GPIO_WritePin(GPIOB, DIR_Pin, RESET);
 			//Determine pulse count
 			gl_positiondelta = gl_pos_counts[pos-1] - gl_pos_counts[gl_filter_position -1];
+			if((gl_actuator_position + gl_positiondelta) <= gl_software_limit)
+			{
+				gl_actuator_position = gl_actuator_position + gl_positiondelta;
+			}
+			else
+			{
+				return -1;
+			}
+
 		}
-		else
+		else if(pos < gl_filter_position)
 		{
 			HAL_GPIO_WritePin(GPIOB, DIR_Pin, SET);
 			//Determine pulse count
 			gl_positiondelta = gl_pos_counts[gl_filter_position -1] - gl_pos_counts[pos-1];
+			if((gl_actuator_position - gl_positiondelta) >= gl_actuator_offset)
+			{
+				gl_actuator_position = gl_actuator_position - gl_positiondelta;
+			}
+			else
+			{
+				return -1;
+			}
+
 		}
+
 
 		gl_inmotion = true;
 		HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_3);
@@ -100,5 +119,11 @@ void actuator_move_pos(uint8_t pos)
 		gl_filter_position = pos;
 		set_led_pos(gl_filter_position);
 
+		return 0;
+	}
+	else
+	{
+		//If commanded to the current position, just ACK back without moving
+		return 0;
 	}
 } //actuator_move_pos

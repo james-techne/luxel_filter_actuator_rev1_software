@@ -17,8 +17,9 @@
  * | `R<CR>`  | Reset the microcontroller      | `R:ACK<CR>`                  |
  *
  * A malformed command is answered with the received characters followed by
- * `:NACK<CR>`. `P` commands are also refused (NACK) before homing or while
- * the actuator is moving.
+ * `:NACK<CR>`. `H` and `P` commands, including the `?` queries, are refused
+ * (NACK) while the actuator is moving; `P` commands are also refused before
+ * homing or if the move would pass a software travel limit.
  *
  * @author james
  * @date Oct 6, 2026
@@ -50,8 +51,9 @@ extern UART_HandleTypeDef huart2;	///< USART2 handle (defined in main.c) used fo
 #define CMD_POS_Q_LEN	3	///< Length of `P?<CR>`.
 #define CMD_BUF_CLR		0x43	///< 'C': clear UART buffers.
 #define CMD_RESET		0x52	///< 'R': reset the microcontroller.
-#define CMD_SAVE		0x53	///< 'S': save settings (reserved, not implemented).
+#define CMD_WRITE		0x57	///< 'W': write (save) settings (reserved, not implemented).
 #define CMD_GET			0x47	///< 'G': get settings (reserved, not implemented).
+#define CMD_RESTORE		0x5A	///< 'Z': restore default position settings (reserved, not implemented).
 /** @} */
 
 /**
@@ -59,25 +61,32 @@ extern UART_HandleTypeDef huart2;	///< USART2 handle (defined in main.c) used fo
  *
  * Removes the command bytes from ::UART_Rx. For `H?`, replies with the homed
  * state. For `H<CR>`, calls actuator_home(), blocks until motion stops, then
- * replies with an ACK. Anything else is answered with a NACK.
+ * replies with an ACK. Anything else is answered with a NACK, and both the
+ * command and the query are refused with `H:NACK<CR>` while the actuator is
+ * moving.
  */
 void cmd_home(void);
 
 /**
  * @brief Handle the `Pn` (move) command and the `P?` query.
  *
- * Removes three bytes from ::UART_Rx. For `P?`, replies with the current
+ * If the actuator is homed and idle but fewer than three bytes are waiting
+ * in ::UART_Rx, the command is treated as truncated: it is NACKed with
+ * `P*:NACK<CR>` and the receive buffer is purged. Otherwise three bytes are removed from
+ * ::UART_Rx. For `P?`, replies with the current
  * filter position. For `Pn<CR>` with n from 1 to 4, calls
  * actuator_move_pos(), blocks until motion stops, then replies with an ACK.
- * A NACK is sent if the command is malformed, n is out of range, the
- * actuator is moving, or it has not been homed.
+ * A NACK is sent if the command is malformed, n is not a digit from 1 to 4,
+ * the actuator is moving, it has not been homed, or the move would pass a
+ * software travel limit (see actuator_move_pos()).
  */
 void cmd_pos(void);
 
 /**
  * @brief Handle the `C` command: purge the UART receive and transmit buffers.
  *
- * Replies with an ACK, or a NACK if the command is malformed.
+ * Replies with an ACK. A malformed command is answered with a NACK, and the
+ * receive buffer is purged.
  */
 void cmd_buffer_clear(void);
 
@@ -85,12 +94,13 @@ void cmd_buffer_clear(void);
  * @brief Handle the `R` command: acknowledge, then reset the microcontroller.
  *
  * Performs a software reset with HAL_NVIC_SystemReset(), so it does not
- * return for a valid command. A malformed command is answered with a NACK.
+ * return for a valid command. A malformed command is answered with a NACK,
+ * and the receive buffer is purged.
  */
 void cmd_reset(void);
 
 /**
- * @brief Store settings (command `S`).
+ * @brief Store settings (command `W`).
  * @note Declared but not yet implemented.
  */
 void cmd_store(void);

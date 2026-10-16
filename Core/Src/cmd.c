@@ -17,60 +17,76 @@ void cmd_home(void)
 	//Pull info out of UART_Rx buffer
 	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);
 	CB_buffer_remove_item(UART_Rx, &cmd_str[1]);
-
-	if(cmd_str[1] == '?')
+	if(!gl_inmotion)
 	{
-		if(gl_homed)
+		if(cmd_str[1] == '?')
 		{
-			cmd_str[1] = '1';
-		}
-		else
-		{
-			cmd_str[1] = '0';
-		}
-		// ACK
-		cmd_str[2] = ':';
-		cmd_str[3] = 'A';
-		cmd_str[4] = 'C';
-		cmd_str[5] = 'K';
-		cmd_str[6] = 0x0D;
-		//cmd_str[6] = 0x0A;
-		for(ii=0;ii<0xFF;ii++){}
-		HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
-
-
-	}
-	else
-	{
-		if((cmd_str[0] != CMD_HOME) || (cmd_str[1] != CMD_TERM))
-		{
-			cmd_str[1] = ':';
-			cmd_str[2] = 'N';
+			if(gl_homed)
+			{
+				cmd_str[1] = '1';
+			}
+			else
+			{
+				cmd_str[1] = '0';
+			}
+			// ACK
+			cmd_str[2] = ':';
 			cmd_str[3] = 'A';
 			cmd_str[4] = 'C';
 			cmd_str[5] = 'K';
 			cmd_str[6] = 0x0D;
-			//cmd_str[7] = 0x0A;
-
+			//cmd_str[6] = 0x0A;
+			for(ii=0;ii<0xFF;ii++){}
 			HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
-			return;
+
+
 		}
+		else
+		{
+			if((cmd_str[0] != CMD_HOME) || (cmd_str[1] != CMD_TERM))
+			{
+				cmd_str[1] = ':';
+				cmd_str[2] = 'N';
+				cmd_str[3] = 'A';
+				cmd_str[4] = 'C';
+				cmd_str[5] = 'K';
+				cmd_str[6] = 0x0D;
+				//cmd_str[7] = 0x0A;
 
-		//Parse
-		actuator_home();
-		while(gl_inmotion){};			//Block while in motion
+				HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+				return;
+			}
 
-		// ACK
-		cmd_str[1] = ':';
-		cmd_str[2] = 'A';
-		cmd_str[3] = 'C';
-		cmd_str[4] = 'K';
-		cmd_str[5] = 0x0D;
-		//cmd_str[6] = 0x0A;
-		for(ii=0;ii<0xFF;ii++){}
-		HAL_UART_Transmit(&huart2, cmd_str, 6, 500);
+			//Parse
+			actuator_home();
+			while(gl_inmotion){};			//Block while in motion
 
+			// ACK
+			cmd_str[1] = ':';
+			cmd_str[2] = 'A';
+			cmd_str[3] = 'C';
+			cmd_str[4] = 'K';
+			cmd_str[5] = 0x0D;
+			//cmd_str[6] = 0x0A;
+			for(ii=0;ii<0xFF;ii++){}
+			HAL_UART_Transmit(&huart2, cmd_str, 6, 500);
+
+		}
 	}
+	else
+	{
+		cmd_str[1] = ':';
+		cmd_str[2] = 'N';
+		cmd_str[3] = 'A';
+		cmd_str[4] = 'C';
+		cmd_str[5] = 'K';
+		cmd_str[6] = 0x0D;
+		//cmd_str[7] = 0x0A;
+
+		HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+		return;
+	}
+
 
 
 
@@ -83,16 +99,52 @@ void cmd_pos(void)
 	//Parse
 	uint8_t cmd_str[8];
 	uint8_t pos, ii;
-	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);
-	CB_buffer_remove_item(UART_Rx, &cmd_str[1]);
-	CB_buffer_remove_item(UART_Rx, &cmd_str[2]);
+	uint8_t move_status;
+
+
 	if((!gl_inmotion) && gl_homed)
 	{
+		if(UART_Rx->count < 3)
+		{
+			CB_buffer_remove_item(UART_Rx, &cmd_str[0]);
+			CB_buffer_remove_item(UART_Rx, &cmd_str[1]);
+			//Truncated command, send NACK, clear buffer
+			cmd_str[1] = '*';
+			cmd_str[2] = ':';
+			cmd_str[3] = 'N';
+			cmd_str[4] = 'A';
+			cmd_str[5] = 'C';
+			cmd_str[6] = 'K';
+			cmd_str[7] = 0x0D;
+
+			for(ii=0;ii<0xFF;ii++){}
+			HAL_UART_Transmit(&huart2, cmd_str, 8, 500);
+
+			CB_purge(UART_Rx);
+			return;
+		}
+
+		CB_buffer_remove_item(UART_Rx, &cmd_str[0]);
+		CB_buffer_remove_item(UART_Rx, &cmd_str[1]);
+		CB_buffer_remove_item(UART_Rx, &cmd_str[2]);
 		//If this is a query
 		if(cmd_str[1] == '?')
 		{
 			pos = gl_filter_position + 0x30;
 			cmd_str[1] = pos;
+		}
+		else if((cmd_str[1] != '1') && (cmd_str[1] != '2') && (cmd_str[1] != '3') && (cmd_str[1] != '4'))
+		{
+			cmd_str[2] = ':';
+			cmd_str[3] = 'N';
+			cmd_str[4] = 'A';
+			cmd_str[5] = 'C';
+			cmd_str[6] = 'K';
+			cmd_str[7] = 0x0D;
+
+			for(ii=0;ii<0xFF;ii++){}
+			HAL_UART_Transmit(&huart2, cmd_str, 8, 500);
+			return;
 		}
 		else	//If this is a command
 		{
@@ -111,8 +163,30 @@ void cmd_pos(void)
 				return;
 			}
 
-			actuator_move_pos(pos);
-			while(gl_inmotion){};			//Block while in motion
+			move_status = actuator_move_pos(pos);
+			if(move_status == 0)
+			{
+				while(gl_inmotion){};			//Block while in motion
+			}
+			else
+			{
+				cmd_str[2] = ':';
+				cmd_str[3] = 'N';
+				cmd_str[4] = 'A';
+				cmd_str[5] = 'C';
+				cmd_str[6] = 'K';
+				cmd_str[7] = 0x0D;
+
+				for(ii=0;ii<0xFF;ii++){}
+
+				HAL_UART_Transmit(&huart2, cmd_str, 8, 500);
+				for(ii=0;ii<0xFF;ii++){}
+				for(ii=0;ii<0xFF;ii++){}
+				for(ii=0;ii<0xFF;ii++){}
+				for(ii=0;ii<0xFF;ii++){}
+				return;
+			}
+
 		}
 
 
@@ -127,6 +201,10 @@ void cmd_pos(void)
 	}
 	else
 	{
+		CB_buffer_remove_item(UART_Rx, &cmd_str[0]);
+		CB_buffer_remove_item(UART_Rx, &cmd_str[1]);
+		CB_buffer_remove_item(UART_Rx, &cmd_str[2]);
+
 		cmd_str[2] = ':';
 		cmd_str[3] = 'N';
 		cmd_str[4] = 'A';
@@ -149,7 +227,7 @@ void cmd_pos(void)
 void cmd_buffer_clear(void)
 {
 
-	uint8_t cmd_str[6];
+	uint8_t cmd_str[7];
 	uint8_t ii;
 	//Pull info out of UART_Rx buffer
 	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);	//Command character C
@@ -165,6 +243,8 @@ void cmd_buffer_clear(void)
 		cmd_str[5] = 'K';
 		cmd_str[6] = 0x0D;
 		//cmd_str[7] = 0x0A;
+
+		CB_purge(UART_Rx);
 
 		HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
 		return;
@@ -184,7 +264,7 @@ void cmd_buffer_clear(void)
 			cmd_str[5] = 0x0D;
 			//cmd_str[6] = 0x0A;
 			for(ii=0;ii<0xFF;ii++){}
-			HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+			HAL_UART_Transmit(&huart2, cmd_str, 6, 500);
 		}
 	}
 
@@ -194,7 +274,7 @@ void cmd_buffer_clear(void)
 
 void cmd_reset(void)
 {
-	uint8_t cmd_str[6];
+	uint8_t cmd_str[7];
 	uint8_t ii;
 	//Pull info out of UART_Rx buffer
 	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);	//Command character C
@@ -210,6 +290,8 @@ void cmd_reset(void)
 		cmd_str[5] = 'K';
 		cmd_str[6] = 0x0D;
 		//cmd_str[7] = 0x0A;
+
+		CB_purge(UART_Rx);
 
 		HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
 		return;
@@ -228,7 +310,7 @@ void cmd_reset(void)
 			cmd_str[5] = 0x0D;
 			//cmd_str[6] = 0x0A;
 			for(ii=0;ii<0xFF;ii++){}
-			HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+			HAL_UART_Transmit(&huart2, cmd_str, 6, 500);
 
 			for(ii=0;ii<0xFF;ii++){}
 

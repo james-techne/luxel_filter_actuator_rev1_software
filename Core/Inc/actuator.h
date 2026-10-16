@@ -32,6 +32,7 @@ extern uint32_t gl_actuator_offset;
 extern uint32_t gl_positiondelta;
 extern uint32_t gl_pos_counts[4];
 extern uint32_t gl_pulse_cnt;
+extern uint32_t gl_software_limit;
 
 /**
  * @brief Home the actuator on the limit switch, then move to position 1.
@@ -57,13 +58,21 @@ void actuator_home(void);
  * interrupts. The move finishes asynchronously: ::gl_inmotion is cleared by
  * HAL_TIM_PeriodElapsedCallback() when the pulse count is reached.
  *
- * The request is ignored if the actuator is already at @p pos or a move is
- * in progress.
+ * The move is rejected if it would take ::gl_actuator_position past
+ * ::gl_software_limit (moving away from the limit switch) or below
+ * ::gl_actuator_offset, which is position 1 (moving toward the switch).
+ * ::gl_actuator_position is updated when a move starts.
  *
  * @param pos Target filter position, 1 to 4.
+ * @retval 0   Move started, or no move was needed because the actuator is
+ *             already at @p pos. Also returned, without starting a move, if
+ *             a move is already in progress.
+ * @retval 255 Move rejected by a software travel limit (the function
+ *             returns -1, which converts to 255 as a uint8_t).
  * @pre  The actuator has been homed with actuator_home().
+ * @note On rejection the DIR pin has already been set, but no motion starts.
  * @warning @p pos is not range-checked here; callers must pass 1 to 4.
  */
-void actuator_move_pos(uint8_t pos);
+uint8_t actuator_move_pos(uint8_t pos);
 
 #endif /* INC_ACTUATOR_H_ */
