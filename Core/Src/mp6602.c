@@ -26,6 +26,7 @@ void mp6602_init(void)
 
 	HAL_StatusTypeDef status;
 
+	//Currently stepping at 1/16th microstepping
 	txData[0] = 0x16;
 	txData[1] = 0x11;
 	HAL_GPIO_WritePin(GPIOA, SPI_CS_Pin, RESET);

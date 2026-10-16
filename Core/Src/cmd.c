@@ -83,7 +83,7 @@ void cmd_pos(void)
 	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);
 	CB_buffer_remove_item(UART_Rx, &cmd_str[1]);
 	CB_buffer_remove_item(UART_Rx, &cmd_str[2]);
-	if(!gl_inmotion)
+	if((!gl_inmotion) && gl_homed)
 	{
 		//If this is a query
 		if(cmd_str[1] == '?')
@@ -132,9 +132,106 @@ void cmd_pos(void)
 		cmd_str[7] = 0x0D;
 
 		for(ii=0;ii<0xFF;ii++){}
-		HAL_UART_Transmit_IT(&huart2, cmd_str, 8);
+
+		HAL_UART_Transmit(&huart2, cmd_str, 8, 500);
+		for(ii=0;ii<0xFF;ii++){}
+		for(ii=0;ii<0xFF;ii++){}
+		for(ii=0;ii<0xFF;ii++){}
+		for(ii=0;ii<0xFF;ii++){}
 		return;
 	}
 
 } //cmd_pos
+
+void cmd_buffer_clear(void)
+{
+
+	uint8_t cmd_str[6];
+	uint8_t ii;
+	//Pull info out of UART_Rx buffer
+	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);	//Command character C
+	CB_buffer_remove_item(UART_Rx, &cmd_str[1]);	//Should be Command termination
+
+
+	if((cmd_str[0] != CMD_BUF_CLR) || (cmd_str[1] != CMD_TERM))
+	{
+		cmd_str[1] = ':';
+		cmd_str[2] = 'N';
+		cmd_str[3] = 'A';
+		cmd_str[4] = 'C';
+		cmd_str[5] = 'K';
+		cmd_str[6] = 0x0D;
+		//cmd_str[7] = 0x0A;
+
+		HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+		return;
+
+	}
+	else
+	{
+		if(cmd_str[0] == 'C')
+		{
+			CB_purge(UART_Rx);
+			CB_purge(UART_Tx);
+			// ACK
+			cmd_str[1] = ':';
+			cmd_str[2] = 'A';
+			cmd_str[3] = 'C';
+			cmd_str[4] = 'K';
+			cmd_str[5] = 0x0D;
+			//cmd_str[6] = 0x0A;
+			for(ii=0;ii<0xFF;ii++){}
+			HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+		}
+	}
+
+
+
+} //cmd_buffer_clear
+
+void cmd_reset(void)
+{
+	uint8_t cmd_str[6];
+	uint8_t ii;
+	//Pull info out of UART_Rx buffer
+	CB_buffer_remove_item(UART_Rx, &cmd_str[0]);	//Command character C
+	CB_buffer_remove_item(UART_Rx, &cmd_str[1]);	//Should be Command termination
+
+
+	if((cmd_str[0] != CMD_RESET) || (cmd_str[1] != CMD_TERM))
+	{
+		cmd_str[1] = ':';
+		cmd_str[2] = 'N';
+		cmd_str[3] = 'A';
+		cmd_str[4] = 'C';
+		cmd_str[5] = 'K';
+		cmd_str[6] = 0x0D;
+		//cmd_str[7] = 0x0A;
+
+		HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+		return;
+
+	}
+	else
+	{
+		if(cmd_str[0] == 'R')
+		{
+
+			// ACK
+			cmd_str[1] = ':';
+			cmd_str[2] = 'A';
+			cmd_str[3] = 'C';
+			cmd_str[4] = 'K';
+			cmd_str[5] = 0x0D;
+			//cmd_str[6] = 0x0A;
+			for(ii=0;ii<0xFF;ii++){}
+			HAL_UART_Transmit(&huart2, cmd_str, 7, 500);
+
+			for(ii=0;ii<0xFF;ii++){}
+
+			HAL_NVIC_SystemReset();
+		}
+	}
+
+} //cmd_reset
 

@@ -25,12 +25,18 @@ extern UART_HandleTypeDef huart2;
 #define CMD_POS_LEN		3
 #define CMD_POS_Q		0x50		//P
 #define CMD_POS_Q_LEN	3
+#define CMD_BUF_CLR		0x43		//C
+#define CMD_RESET		0x52		//R
+#define CMD_SAVE		0x53		//S
+#define CMD_GET			0x47		//G
 
 
 void cmd_home(void);
-
 void cmd_pos(void);
-
+void cmd_buffer_clear(void);
+void cmd_reset(void);
+void cmd_store(void);
+void cmd_get(void);
 
 
 #endif /* INC_CMD_H_ */

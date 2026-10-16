@@ -248,6 +248,8 @@ int main(void)
 		  {
 		  case(CMD_HOME)	:	cmd_home(); CB_purge(UART_Rx); gl_cmd_flag = false; break;
 		  case(CMD_POS)		:	cmd_pos(); CB_purge(UART_Rx); gl_cmd_flag = false; break;
+		  case(CMD_BUF_CLR)	:	cmd_buffer_clear(); gl_cmd_flag = false; break;
+		  case(CMD_RESET)	:	cmd_reset(); gl_cmd_flag = false; break;
 		  default			:	CB_purge(UART_Rx); gl_cmd_flag = false; break;
 		  }
 	  }
